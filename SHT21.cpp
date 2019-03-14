@@ -13,13 +13,17 @@
 // just contact techsupport@e-radionica.com
 //==============================================================================
 
-#include <Arduino.h>
-#include <Wire.h>
 #include <SHT21.h>
 
 //==============================================================================
 // PUBLIC
 //==============================================================================
+bool SHT21::isAlive() {
+	Wire.beginTransmission(I2C_ADD);
+	sht_ok = (Wire.endTransmission() == 0);
+	return sht_ok;
+}
+
 float SHT21::getHumidity(void) {
 	uint16_t result; 	// return variable
 	
@@ -55,7 +59,7 @@ uint8_t SHT21::getSerialNumber(uint8_t return_sn) {
 	Wire.endTransmission();
 
 	Wire.requestFrom(I2C_ADD,8);
-	while(Wire.available() < 8) {}
+	if (Wire.available() < 8) return 0;
 
 	serialNumber[5] = Wire.read();	// read SNB_3
 	Wire.read();					// CRC SNB_3 not used
@@ -73,7 +77,7 @@ uint8_t SHT21::getSerialNumber(uint8_t return_sn) {
 	Wire.endTransmission();
 
 	Wire.requestFrom(I2C_ADD,6);
-	while(Wire.available() < 6) {}
+	if (Wire.available() < 6) return 0;
 
 	serialNumber[1] = Wire.read();	// read SNC_1
 	serialNumber[0] = Wire.read();  // read SNC_0
@@ -96,26 +100,30 @@ uint16_t SHT21::readSensor_hm(uint8_t command) {
 
 	Wire.beginTransmission(I2C_ADD);
 	Wire.write(command);
-	Wire.endTransmission();
+	if (Wire.endTransmission() != 0) {
+		sht_ok = false;
+		return 0;
+	}
 
 	Wire.requestFrom(I2C_ADD,3);
-	while(Wire.available() < 3) {
-		delayMicroseconds(85);
+	if (Wire.available() < 3) {
+		sht_ok = false;
+		return 0;
 	}
 
 	data[0] = Wire.read(); 	// read data (MSB)
 	data[1] = Wire.read(); 	// read data (LSB)
 	checksum = Wire.read();	// read checksum
 
-	result = (data[0] << 8);
-	result += data[1];
-
 	if(CRC_Checksum (data,2,checksum)) {
-		reset();
-		return 1;
+		sht_ok = false;
+		return 0;
+	} else {
+		sht_ok = true;
+		result = (data[0] << 8);
+		result += data[1];
+		return result;
 	}
-
-	else return result;
 }
 
 float SHT21::CalcRH(uint16_t rh) {
@@ -147,5 +155,3 @@ uint8_t SHT21::CRC_Checksum(uint8_t data[], uint8_t no_of_bytes, uint8_t checksu
  	 if (crc != checksum) return 1;
  	 else return 0;
 }
-
-
